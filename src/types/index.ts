@@ -48,6 +48,6 @@ export interface ScrapeResponse {
 }
 
 export interface ExportOptions {
-  format: 'csv' | 'json' | 'excel';
+  format: 'csv' | 'json';
   fields?: string[];
 }
