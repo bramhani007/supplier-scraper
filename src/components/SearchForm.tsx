@@ -15,11 +15,15 @@ const popularCities = [
   'Kolkata', 'Pune', 'Ahmedabad', 'Jaipur', 'Lucknow'
 ];
 
-const popularCategories = [
-  'cashew-nuts', 'textile-machinery', 'industrial-chemicals',
-  'electrical-equipment', 'pharmaceutical-machinery', 'packaging-machines',
-  'construction-machinery', 'agricultural-equipment', 'automobile-parts',
-  'plastic-machinery', 'food-processing-machinery', 'printing-machinery'
+const popularCategories: { label: string; slug: string }[] = [
+  { label: 'Cashew Nuts',   slug: 'cashew-nuts'   },
+  { label: 'Groundnut Oil', slug: 'groundnut-oil'  },
+  { label: 'Papad',         slug: 'papad'          },
+  { label: 'Rice',          slug: 'rice'           },
+  { label: 'Spices',        slug: 'spices'         },
+  { label: 'Dry Fruits',    slug: 'dry-fruits'     },
+  { label: 'Coconut Oil',   slug: 'coconut-oil'    },
+  { label: 'Turmeric',      slug: 'turmeric'       },
 ];
 
 export function SearchForm({ onSearch, isLoading }: SearchFormProps) {
@@ -111,7 +115,7 @@ export function SearchForm({ onSearch, isLoading }: SearchFormProps) {
               type="text"
               value={category}
               onChange={(e) => handleCategoryChange(e.target.value)}
-              placeholder="e.g., cashew-nuts, textile-machinery"
+              placeholder="e.g., cashew-nuts, groundnut-oil"
               maxLength={100}
               className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none ${errors.category ? 'border-red-400' : 'border-gray-200'}`}
             />
@@ -119,14 +123,18 @@ export function SearchForm({ onSearch, isLoading }: SearchFormProps) {
               <p className="mt-1 text-xs text-red-600">{errors.category}</p>
             )}
             <div className="flex flex-wrap gap-2 mt-3">
-              {popularCategories.slice(0, 5).map((c) => (
+              {popularCategories.map(({ label, slug }) => (
                 <button
-                  key={c}
+                  key={slug}
                   type="button"
-                  onClick={() => handleCategoryChange(c)}
-                  className="px-3 py-1 text-xs font-medium bg-gray-100 hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 rounded-full transition-colors"
+                  onClick={() => handleCategoryChange(slug)}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                    category === slug
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-gray-100 hover:bg-emerald-50 text-gray-600 hover:text-emerald-700'
+                  }`}
                 >
-                  {c}
+                  {label}
                 </button>
               ))}
             </div>

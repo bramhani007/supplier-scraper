@@ -152,7 +152,7 @@ async function scrapeListingPage(city: string, category: string): Promise<string
   const profileHost = 'www.indiamart.com';
 
   let pageUrl: string | null = `https://${baseHost}/${city}/${category}.html`;
-  const MAX_PAGES = 10;
+  const MAX_PAGES = 20;
 
   for (let page = 0; page < MAX_PAGES && pageUrl; page++) {
     const res = await safeFetch(pageUrl);
@@ -200,7 +200,7 @@ async function scrapeListingPage(city: string, category: string): Promise<string
     await delay(2000);
   }
 
-  return [...links].slice(0, 200);
+  return [...links].slice(0, 500);
 }
 
 // ── IndiaMART supplier profile ────────────────────────────────────────────────
