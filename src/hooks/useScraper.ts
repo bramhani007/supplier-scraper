@@ -55,7 +55,18 @@ export function useSuppliers() {
     };
   }, [fetchSuppliers]);
 
-  return { suppliers, isLoading, error, refetch: fetchSuppliers };
+  const deleteSupplier = useCallback(async (id: number) => {
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (error) throw error;
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const clearAllSuppliers = useCallback(async () => {
+    await supabase.from('suppliers').delete().neq('id', 0);
+    setSuppliers([]);
+  }, []);
+
+  return { suppliers, isLoading, error, refetch: fetchSuppliers, deleteSupplier, clearAllSuppliers };
 }
 
 export function useScraping() {
@@ -164,12 +175,19 @@ export function useScraping() {
     return response.json();
   }, []);
 
+  const resetJob = useCallback(() => {
+    setCurrentJob(null);
+    setIsScraping(false);
+    setIsPolling(false);
+  }, []);
+
   return {
     isScraping,
     isPolling,
     currentJob,
     startScraping,
     scrapeSingleUrl,
+    resetJob,
   };
 }
 
@@ -177,20 +195,24 @@ export function useJobs() {
   const [jobs, setJobs] = useState<ScrapingJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchJobs = async () => {
-      const { data } = await supabase
-        .from('scraping_jobs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      setJobs(data || []);
-      setIsLoading(false);
-    };
-
-    fetchJobs();
+  const fetchJobs = useCallback(async () => {
+    const { data } = await supabase
+      .from('scraping_jobs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setJobs(data || []);
+    setIsLoading(false);
   }, []);
 
-  return { jobs, isLoading };
+  const clearAllJobs = useCallback(async () => {
+    await supabase.from('scraping_jobs').delete().neq('id', 0);
+    setJobs([]);
+  }, []);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  return { jobs, isLoading, clearAllJobs };
 }

@@ -8,14 +8,17 @@ import { StatsPanel } from './components/StatsPanel';
 import { useSuppliers, useScraping, useJobs } from './hooks/useScraper';
 
 function App() {
-  const { suppliers, isLoading: suppliersLoading } = useSuppliers();
-  const { isScraping, isPolling, currentJob, startScraping } = useScraping();
-  const { jobs } = useJobs();
+  const { suppliers, isLoading: suppliersLoading, deleteSupplier, clearAllSuppliers } = useSuppliers();
+  const { isScraping, isPolling, currentJob, startScraping, resetJob } = useScraping();
+  const { jobs, clearAllJobs } = useJobs();
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleSearch = useCallback(async (city: string, category: string) => {
     try {
       setNotification(null);
+      resetJob();
+      await clearAllSuppliers();
+      await clearAllJobs();
       await startScraping(city, category);
       setNotification({
         type: 'success',
@@ -27,7 +30,7 @@ function App() {
         message: error instanceof Error ? error.message : 'An error occurred',
       });
     }
-  }, [startScraping]);
+  }, [startScraping, resetJob, clearAllSuppliers, clearAllJobs]);
 
   const clearNotification = () => setNotification(null);
 
@@ -87,7 +90,7 @@ function App() {
           {suppliers.length > 0 && (
             <ExportPanel suppliers={suppliers} disabled={isScraping} />
           )}
-          <ResultsTable suppliers={suppliers} isLoading={suppliersLoading} />
+          <ResultsTable suppliers={suppliers} isLoading={suppliersLoading} onDelete={deleteSupplier} />
         </div>
 
         {/* Jobs History */}

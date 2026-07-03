@@ -14,24 +14,36 @@ function safeHref(url: string | null | undefined): string | undefined {
 import {
   Building2, MapPin, Phone, Mail, Globe, FileText,
   Building, Users, IndianRupee, Award, ExternalLink,
-  Search, ChevronDown, ChevronUp, Copy, CheckCircle
+  Search, ChevronDown, ChevronUp, Copy, CheckCircle, Trash2
 } from 'lucide-react';
 import { Supplier } from '../types';
 
 interface ResultsTableProps {
   suppliers: Supplier[];
   isLoading: boolean;
+  onDelete: (id: number) => Promise<void>;
 }
 
 type SortField = 'name' | 'location' | 'created_at' | 'source_type';
 type SortOrder = 'asc' | 'desc';
 
-export function ResultsTable({ suppliers, isLoading }: ResultsTableProps) {
+export function ResultsTable({ suppliers, isLoading, onDelete }: ResultsTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    setDeletingId(id);
+    try {
+      await onDelete(id);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filteredSuppliers = useMemo(() => {
     const filtered = suppliers.filter(supplier => {
@@ -224,7 +236,7 @@ export function ResultsTable({ suppliers, isLoading }: ResultsTableProps) {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       {safeHref(supplier.indiamart_url) && (
                         <a
                           href={safeHref(supplier.indiamart_url)}
@@ -236,6 +248,14 @@ export function ResultsTable({ suppliers, isLoading }: ResultsTableProps) {
                           <ExternalLink className="w-4 h-4 text-gray-500" />
                         </a>
                       )}
+                      <button
+                        onClick={(e) => handleDelete(e, supplier.id)}
+                        disabled={deletingId === supplier.id}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors group disabled:opacity-50"
+                        title="Delete supplier"
+                      >
+                        <Trash2 className="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
+                      </button>
                     </div>
                   </td>
                 </tr>
