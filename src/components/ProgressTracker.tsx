@@ -1,20 +1,21 @@
 import React from 'react';
-import { Loader2, CheckCircle2, XCircle, Clock, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, ExternalLink, StopCircle } from 'lucide-react';
 import { ScrapingJob } from '../types';
 
 interface ProgressTrackerProps {
   job: ScrapingJob | null;
   isPolling: boolean;
+  onStop?: (jobId: number) => void;
 }
 
-export function ProgressTracker({ job, isPolling }: ProgressTrackerProps) {
+export function ProgressTracker({ job, isPolling, onStop }: ProgressTrackerProps) {
   if (!job) return null;
 
   const progress = job.total_suppliers > 0
     ? Math.round((job.processed_suppliers / job.total_suppliers) * 100)
     : 0;
 
-  const statusConfig = {
+  const statusConfig: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
     pending: {
       icon: Clock,
       color: 'text-gray-500',
@@ -38,10 +39,16 @@ export function ProgressTracker({ job, isPolling }: ProgressTrackerProps) {
       color: 'text-red-600',
       bg: 'bg-red-50',
       label: 'Failed'
-    }
+    },
+    cancelled: {
+      icon: StopCircle,
+      color: 'text-orange-600',
+      bg: 'bg-orange-50',
+      label: 'Stopped'
+    },
   };
 
-  const status = statusConfig[job.status] || statusConfig.pending;
+  const status = statusConfig[job.status] ?? statusConfig.pending;
   const StatusIcon = status.icon;
 
   const formatTime = (dateStr: string | null) => {
@@ -59,18 +66,22 @@ export function ProgressTracker({ job, isPolling }: ProgressTrackerProps) {
     const end = job.completed_at ? new Date(job.completed_at).getTime() : Date.now();
     const seconds = Math.floor((end - start) / 1000);
     const minutes = Math.floor(seconds / 60);
-    if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`;
-    }
-    return `${seconds}s`;
+    return minutes > 0 ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
   };
+
+  const barColor =
+    job.status === 'completed' ? 'bg-emerald-500' :
+    job.status === 'failed'    ? 'bg-red-500'     :
+    job.status === 'cancelled' ? 'bg-orange-400'  : 'bg-blue-500';
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
       <div className={`px-6 py-4 ${status.bg} border-b`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <StatusIcon className={`w-5 h-5 ${status.color} ${job.status === 'processing' ? 'animate-spin' : ''}`} />
+            <StatusIcon
+              className={`w-5 h-5 ${status.color} ${job.status === 'processing' ? 'animate-spin' : ''}`}
+            />
             <div>
               <h3 className="font-semibold text-gray-900">
                 Scraping: {job.city} / {job.category}
@@ -81,9 +92,22 @@ export function ProgressTracker({ job, isPolling }: ProgressTrackerProps) {
               </p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-gray-900">{job.processed_suppliers}</div>
-            <div className="text-sm text-gray-500">of {job.total_suppliers} suppliers</div>
+
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-2xl font-bold text-gray-900">{job.processed_suppliers}</div>
+              <div className="text-sm text-gray-500">of {job.total_suppliers} suppliers</div>
+            </div>
+
+            {job.status === 'processing' && onStop && (
+              <button
+                onClick={() => onStop(job.id)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+              >
+                <StopCircle className="w-4 h-4" />
+                Stop
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -96,10 +120,7 @@ export function ProgressTracker({ job, isPolling }: ProgressTrackerProps) {
           </div>
           <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className={`h-full transition-all duration-500 ${
-                job.status === 'completed' ? 'bg-emerald-500' :
-                job.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'
-              }`}
+              className={`h-full transition-all duration-500 ${barColor}`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -126,6 +147,14 @@ export function ProgressTracker({ job, isPolling }: ProgressTrackerProps) {
               <ExternalLink className="w-4 h-4 flex-shrink-0" />
               <span className="truncate font-mono text-xs">{job.current_url}</span>
             </div>
+          </div>
+        )}
+
+        {job.status === 'cancelled' && (
+          <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+            <p className="text-sm text-orange-700 font-medium">
+              Scraping stopped — {job.processed_suppliers} supplier{job.processed_suppliers !== 1 ? 's' : ''} collected so far are saved.
+            </p>
           </div>
         )}
 

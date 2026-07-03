@@ -519,7 +519,13 @@ Deno.serve(async (req: Request) => {
           .eq('id', job.id);
 
         let processed = 0;
+        let cancelled = false;
         for (const link of links) {
+          // Check if the job has been cancelled before processing each supplier
+          const { data: jobCheck } = await supabase
+            .from('scraping_jobs').select('status').eq('id', job.id).single();
+          if (jobCheck?.status === 'cancelled') { cancelled = true; break; }
+
           await delay(2000);
 
           await supabase.from('scraping_jobs').update({
@@ -552,12 +558,19 @@ Deno.serve(async (req: Request) => {
           processed++;
         }
 
-        await supabase.from('scraping_jobs').update({
-          status: 'completed',
-          processed_suppliers: processed,
-          completed_at: new Date().toISOString(),
-          current_url: null,
-        }).eq('id', job.id);
+        if (!cancelled) {
+          await supabase.from('scraping_jobs').update({
+            status: 'completed',
+            processed_suppliers: processed,
+            completed_at: new Date().toISOString(),
+            current_url: null,
+          }).eq('id', job.id);
+        } else {
+          await supabase.from('scraping_jobs').update({
+            processed_suppliers: processed,
+            current_url: null,
+          }).eq('id', job.id);
+        }
       } catch {
         await supabase.from('scraping_jobs').update({
           status: 'failed',
@@ -567,6 +580,25 @@ Deno.serve(async (req: Request) => {
     })();
 
     return new Response(JSON.stringify({ success: true, jobId: job.id }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // ── action: stop ──────────────────────────────────────────────────────────
+  if (action === 'stop') {
+    const jobId = typeof body.jobId === 'number' ? body.jobId : null;
+    if (!jobId) {
+      return new Response(JSON.stringify({ error: 'jobId required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    await supabase.from('scraping_jobs')
+      .update({ status: 'cancelled', current_url: null })
+      .eq('id', jobId)
+      .eq('status', 'processing'); // only cancel if still running
+    return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

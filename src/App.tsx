@@ -9,7 +9,7 @@ import { useSuppliers, useScraping, useJobs } from './hooks/useScraper';
 
 function App() {
   const { suppliers, isLoading: suppliersLoading, deleteSupplier, clearAllSuppliers } = useSuppliers();
-  const { isScraping, isPolling, currentJob, startScraping, resetJob } = useScraping();
+  const { isScraping, isPolling, currentJob, startScraping, stopScraping, resetJob } = useScraping();
   const { jobs, clearAllJobs } = useJobs();
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -78,8 +78,8 @@ function App() {
         <SearchForm onSearch={handleSearch} isLoading={isScraping} categories={[]} />
 
         {/* Progress Tracker */}
-        {(currentJob || isPolling) && (
-          <ProgressTracker job={currentJob} isPolling={isPolling} />
+        {currentJob && (
+          <ProgressTracker job={currentJob} isPolling={isPolling} onStop={stopScraping} />
         )}
 
         {/* Stats Panel */}

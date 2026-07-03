@@ -30,7 +30,7 @@ export interface ScrapingJob {
   id: number;
   city: string;
   category: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   total_suppliers: number;
   processed_suppliers: number;
   current_url: string | null;

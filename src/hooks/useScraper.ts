@@ -175,6 +175,19 @@ export function useScraping() {
     return response.json();
   }, []);
 
+  const stopScraping = useCallback(async (jobId: number) => {
+    await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ action: 'stop', jobId }),
+    });
+    setIsScraping(false);
+    setIsPolling(false);
+  }, []);
+
   const resetJob = useCallback(() => {
     setCurrentJob(null);
     setIsScraping(false);
@@ -186,6 +199,7 @@ export function useScraping() {
     isPolling,
     currentJob,
     startScraping,
+    stopScraping,
     scrapeSingleUrl,
     resetJob,
   };
