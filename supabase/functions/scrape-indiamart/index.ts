@@ -215,7 +215,7 @@ async function scrapeListingPage(city: string, category: string): Promise<string
     await delay(2000);
   }
 
-  return [...links].slice(0, 500);
+  return [...links].slice(0, 35);
 }
 
 // ── IndiaMART supplier profile ────────────────────────────────────────────────
