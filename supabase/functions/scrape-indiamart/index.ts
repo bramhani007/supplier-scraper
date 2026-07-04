@@ -177,10 +177,25 @@ async function scrapeListingPage(city: string, category: string): Promise<string
       // Skip non-http links, directory listing pages we already handle, and utility paths
       if (safe.pathname === '/' || safe.pathname === '') return;
       if (/\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|pdf)$/i.test(safe.pathname)) return;
-      if (safe.pathname.startsWith('/search') || safe.pathname.startsWith('/tag')) return;
 
-      // Accept IndiaMART company profile pages or any external site link
-      const isProfilePage = safe.hostname === profileHost && safe.pathname.length > 1;
+      // Non-supplier first-path segments on www.indiamart.com
+      // (product detail, utility pages, etc. — these are NOT company profiles)
+      const SKIP_SEGMENTS = new Set([
+        'proddetail', 'buyer', 'sell', 'message', 'member',
+        'search', 'tag', 'buy', 'seller', 'product', 'enquiry',
+        'rfq', 'verified', 'helpdesk', 'login', 'signup', 'register',
+        'catalog', 'leads', 'industry', 'service', 'vcard',
+      ]);
+      const firstSegment = safe.pathname.split('/').filter(Boolean)[0] ?? '';
+
+      // Accept IndiaMART company profile pages only (first segment = company slug, not a utility)
+      const isProfilePage =
+        safe.hostname === profileHost &&
+        safe.pathname.length > 1 &&
+        firstSegment.length > 0 &&
+        !SKIP_SEGMENTS.has(firstSegment);
+
+      // Accept any external (non-IndiaMART) site link
       const isExternal = !safe.hostname.includes('indiamart.com');
 
       if (isProfilePage || isExternal) links.add(safe.toString());
@@ -519,6 +534,7 @@ Deno.serve(async (req: Request) => {
           .eq('id', job.id);
 
         let processed = 0;
+        let saved = 0;
         let cancelled = false;
         for (const link of links) {
           // Check if the job has been cancelled before processing each supplier
@@ -528,9 +544,9 @@ Deno.serve(async (req: Request) => {
 
           await delay(2000);
 
+          // Show the URL currently being scraped
           await supabase.from('scraping_jobs').update({
             current_url: link.slice(0, 500),
-            processed_suppliers: processed,
           }).eq('id', job.id);
 
           try {
@@ -550,24 +566,30 @@ Deno.serve(async (req: Request) => {
 
             if (data.scrape_status === 'completed') {
               await supabase.from('suppliers').insert({ ...data });
+              saved++;
             }
           } catch {
             // Never surface internal errors to the job record
           }
 
           processed++;
+
+          // Update counters AFTER each link is fully processed
+          await supabase.from('scraping_jobs').update({
+            processed_suppliers: saved,   // reflects actual saved suppliers
+          }).eq('id', job.id);
         }
 
         if (!cancelled) {
           await supabase.from('scraping_jobs').update({
             status: 'completed',
-            processed_suppliers: processed,
+            processed_suppliers: saved,
             completed_at: new Date().toISOString(),
             current_url: null,
           }).eq('id', job.id);
         } else {
           await supabase.from('scraping_jobs').update({
-            processed_suppliers: processed,
+            processed_suppliers: saved,
             current_url: null,
           }).eq('id', job.id);
         }
