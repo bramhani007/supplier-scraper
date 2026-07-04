@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Building2, History } from 'lucide-react';
 import { SearchForm } from './components/SearchForm';
 import { ProgressTracker } from './components/ProgressTracker';
@@ -12,18 +12,28 @@ function App() {
   const { isScraping, isPolling, currentJob, startScraping, stopScraping, resetJob } = useScraping();
   const { jobs, clearAllJobs } = useJobs();
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const prevJobStatus = useRef<string | null>(null);
+
+  // Show success notification only when the job transitions TO 'completed'
+  useEffect(() => {
+    const status = currentJob?.status ?? null;
+    if (prevJobStatus.current === 'processing' && status === 'completed') {
+      setNotification({
+        type: 'success',
+        message: `Scraping completed for ${currentJob!.city}/${currentJob!.category} — ${currentJob!.processed_suppliers} suppliers found`,
+      });
+    }
+    prevJobStatus.current = status;
+  }, [currentJob?.status]);
 
   const handleSearch = useCallback(async (city: string, category: string) => {
     try {
       setNotification(null);
+      prevJobStatus.current = null;
       resetJob();
       await clearAllSuppliers();
       await clearAllJobs();
       await startScraping(city, category);
-      setNotification({
-        type: 'success',
-        message: `Scraping completed for ${city}/${category}`,
-      });
     } catch (error) {
       setNotification({
         type: 'error',
