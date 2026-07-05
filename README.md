@@ -1,7 +1,7 @@
 # supplier-scraper
 
 ## 🚀 Live Demo
-https://indiamart-supplier-scraper.bolt.host/
+https://indiamart.welocalhost.com/
 
 ## ✨ Features
 
