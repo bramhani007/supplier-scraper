@@ -145,74 +145,127 @@ async function isRateLimited(): Promise<boolean> {
   return (count ?? 0) >= maxJobs;
 }
 
-// ── IndiaMART listing page ────────────────────────────────────────────────────
-async function scrapeListingPage(city: string, category: string): Promise<string[]> {
-  const links = new Set<string>();
-  const baseHost = 'dir.indiamart.com';
-  const profileHost = 'www.indiamart.com';
+// ── Non-supplier path segments (company profiles are NOT these) ───────────────
+const SKIP_SEGMENTS = new Set([
+  'proddetail', 'buyer', 'sell', 'message', 'member',
+  'search', 'tag', 'buy', 'seller', 'product', 'enquiry',
+  'rfq', 'verified', 'helpdesk', 'login', 'signup', 'register',
+  'catalog', 'leads', 'industry', 'service', 'vcard', 'mp',
+]);
 
-  let pageUrl: string | null = `https://${baseHost}/${city}/${category}.html`;
-  const MAX_PAGES = 20;
+const DIR_HOST     = 'dir.indiamart.com';
+const PROFILE_HOST = 'www.indiamart.com';
 
-  for (let page = 0; page < MAX_PAGES && pageUrl; page++) {
-    const res = await safeFetch(pageUrl);
-    if (!res) break;
+// Extract profile + external links from a loaded Cheerio page
+function extractSupplierLinks(
+  $: ReturnType<typeof cheerio.load>,
+  fallbackBase: string,
+): string[] {
+  const found: string[] = [];
 
-    const html = await res.text();
-    const $ = cheerio.load(html);
+  $('a[href]').each((_, el) => {
+    const raw = $(el).attr('href') || '';
+    if (!raw || raw === '#' || raw.startsWith('javascript')) return;
 
-    $('a[href]').each((_, el) => {
-      const raw = $(el).attr('href') || '';
-      if (!raw) return;
-
-      // Resolve relative URLs
-      let abs = raw;
-      if (raw.startsWith('//')) abs = 'https:' + raw;
-      else if (raw.startsWith('/')) abs = `https://${baseHost}${raw}`;
-
-      // Must be a valid, non-private URL
-      const safe = parseSafeUrl(abs);
-      if (!safe) return;
-
-      // Skip non-http links, directory listing pages we already handle, and utility paths
-      if (safe.pathname === '/' || safe.pathname === '') return;
-      if (/\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|pdf)$/i.test(safe.pathname)) return;
-
-      // Non-supplier first-path segments on www.indiamart.com
-      // (product detail, utility pages, etc. — these are NOT company profiles)
-      const SKIP_SEGMENTS = new Set([
-        'proddetail', 'buyer', 'sell', 'message', 'member',
-        'search', 'tag', 'buy', 'seller', 'product', 'enquiry',
-        'rfq', 'verified', 'helpdesk', 'login', 'signup', 'register',
-        'catalog', 'leads', 'industry', 'service', 'vcard',
-      ]);
-      const firstSegment = safe.pathname.split('/').filter(Boolean)[0] ?? '';
-
-      // Accept IndiaMART company profile pages only (first segment = company slug, not a utility)
-      const isProfilePage =
-        safe.hostname === profileHost &&
-        safe.pathname.length > 1 &&
-        firstSegment.length > 0 &&
-        !SKIP_SEGMENTS.has(firstSegment);
-
-      // Accept any external (non-IndiaMART) site link
-      const isExternal = !safe.hostname.includes('indiamart.com');
-
-      if (isProfilePage || isExternal) links.add(safe.toString());
-    });
-
-    // Pagination
-    const nextRaw = $('a:contains("Next"), a[rel="next"], .pagination .next a').first().attr('href');
-    if (nextRaw && nextRaw !== pageUrl) {
-      let next = nextRaw;
-      if (next.startsWith('//')) next = 'https:' + next;
-      else if (next.startsWith('/')) next = `https://${baseHost}${next}`;
-      pageUrl = parseSafeUrl(next)?.toString() ?? null;
-    } else {
-      pageUrl = null;
+    let abs = raw;
+    if (raw.startsWith('//')) abs = 'https:' + raw;
+    else if (raw.startsWith('/')) abs = `https://${DIR_HOST}${raw}`;
+    else if (!raw.startsWith('http')) {
+      try { abs = new URL(raw, fallbackBase).toString(); } catch { return; }
     }
 
-    await delay(2000);
+    const safe = parseSafeUrl(abs);
+    if (!safe) return;
+    if (safe.pathname === '/' || safe.pathname === '') return;
+    if (/\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|pdf)$/i.test(safe.pathname)) return;
+
+    const firstSegment = safe.pathname.split('/').filter(Boolean)[0] ?? '';
+
+    const isProfilePage =
+      safe.hostname === PROFILE_HOST &&
+      safe.pathname.length > 1 &&
+      firstSegment.length > 0 &&
+      !SKIP_SEGMENTS.has(firstSegment);
+
+    const isExternal = !safe.hostname.includes('indiamart.com');
+
+    if (isProfilePage || isExternal) found.push(safe.toString());
+  });
+
+  return found;
+}
+
+// Resolve a "Next page" href relative to the dir host
+function resolveNext(raw: string | undefined, currentUrl: string): string | null {
+  if (!raw || raw === '#') return null;
+  let next = raw;
+  if (next.startsWith('//')) next = 'https:' + next;
+  else if (next.startsWith('/')) next = `https://${DIR_HOST}${next}`;
+  else if (!next.startsWith('http')) {
+    try { next = new URL(next, currentUrl).toString(); } catch { return null; }
+  }
+  if (next === currentUrl) return null;
+  return parseSafeUrl(next)?.toString() ?? null;
+}
+
+// ── IndiaMART listing page ────────────────────────────────────────────────────
+// Tries multiple URL patterns and paginates each until we hit 35 supplier links
+async function scrapeListingPage(city: string, category: string): Promise<string[]> {
+  const links = new Set<string>();
+
+  // Convert slug back to readable form for the search endpoint (cashew-nuts → cashew nuts)
+  const searchTerm = category.replace(/-/g, ' ');
+
+  // Candidate starting URLs, tried in order. First hit that yields links wins;
+  // we paginate it and then continue to the next pattern if still under 35.
+  const candidates: string[] = [
+    `https://${DIR_HOST}/${city}/${category}.html`,
+    `https://${DIR_HOST}/${city}/${category}-manufacturers.html`,
+    `https://${DIR_HOST}/${city}/${category}-suppliers.html`,
+    `https://${DIR_HOST}/${city}/${category}-traders.html`,
+    // IndiaMART search endpoint — works for any product + city
+    `https://${DIR_HOST}/search.mp?ss=${encodeURIComponent(searchTerm)}&prdi=${encodeURIComponent(city)}`,
+    // City-agnostic fallback (in case city slug doesn't match IndiaMART's spelling)
+    `https://${DIR_HOST}/search.mp?ss=${encodeURIComponent(searchTerm)}`,
+  ];
+
+  const MAX_PAGES_PER_URL = 6;
+
+  for (const startUrl of candidates) {
+    if (links.size >= 35) break;
+
+    let pageUrl: string | null = startUrl;
+    let pagesScraped = 0;
+    let gotAny = false;
+
+    while (pageUrl && pagesScraped < MAX_PAGES_PER_URL && links.size < 35) {
+      const res = await safeFetch(pageUrl);
+      if (!res) break;
+
+      const html = await res.text();
+      const $ = cheerio.load(html);
+
+      const found = extractSupplierLinks($, pageUrl);
+      for (const l of found) links.add(l);
+      if (found.length > 0) gotAny = true;
+
+      // Pagination — IndiaMART uses several next-page selectors
+      const nextRaw =
+        $('a[rel="next"]').first().attr('href') ||
+        $('a:contains("Next")').first().attr('href') ||
+        $('a:contains("next")').first().attr('href') ||
+        $('[class*="pagination"] a[href*="page="]').last().attr('href') ||
+        $('[class*="next"] a[href]').first().attr('href');
+
+      pageUrl = resolveNext(nextRaw, pageUrl);
+      pagesScraped++;
+
+      if (pageUrl && links.size < 35) await delay(1500);
+    }
+
+    // If this pattern returned zero results, move to the next candidate
+    // without a long wait; if it gave results we honour the inter-page delay above.
+    if (!gotAny) await delay(500);
   }
 
   return [...links].slice(0, 35);
